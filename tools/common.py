@@ -156,7 +156,10 @@ def unhide_all():
         set_unselectable(obj, False)
 
     if not version_2_79_or_older():
-        unhide_all_unnecessary()
+        try:
+            unhide_all_unnecessary()
+        except Exception:
+            pass
 
 
 def unhide_children(parent):
