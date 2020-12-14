@@ -18,7 +18,7 @@ from .models import Translated, Detected
 
 
 EXCLUDES = ('en', 'ca', 'fr')
-MAX_RETRY = 3
+MAX_RETRY = 5
 
 
 class Translator(object):
