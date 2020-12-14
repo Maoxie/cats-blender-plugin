@@ -4,6 +4,8 @@ A Translation module.
 
 You can translate text using this module.
 """
+import time
+
 import requests
 import random
 import bpy
@@ -16,6 +18,7 @@ from .models import Translated, Detected
 
 
 EXCLUDES = ('en', 'ca', 'fr')
+MAX_RETRY = 3
 
 
 class Translator(object):
@@ -61,7 +64,13 @@ class Translator(object):
         params = utils.build_params(query=text, src=src, dest=dest,
                                     token=token)
         url = urls.TRANSLATE.format(host=self._pick_service_url())
-        r = self.session.get(url, params=params)
+        retries = MAX_RETRY
+        while retries:
+            r = self.session.get(url, params=params)
+            if r.status_code == 200:
+                break
+            time.sleep(3)
+            retries -= 1
 
         # print('JSON:', r.text)
 

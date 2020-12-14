@@ -31,6 +31,7 @@ import json
 import pathlib
 import collections
 import requests.exceptions
+import sqlite3
 
 from datetime import datetime, timezone
 from collections import OrderedDict
@@ -47,8 +48,8 @@ dictionary_google = None
 main_dir = pathlib.Path(os.path.dirname(__file__)).parent.resolve()
 resources_dir = os.path.join(str(main_dir), "resources")
 dictionary_file = os.path.join(resources_dir, "dictionary.json")
-dictionary_google_file = os.path.join(resources_dir, "dictionary_google.json")
-
+# dictionary_google_file = os.path.join(resources_dir, "dictionary_google.json")
+dictionary_google_db = os.path.join(resources_dir, "dictionary_google.db")
 
 @register_wrap
 class TranslateShapekeyButton(bpy.types.Operator):
@@ -323,42 +324,26 @@ def load_translations():
         pass
 
     # Load local google dictionary and add it to the temp dict
-    try:
-        with open(dictionary_google_file, encoding="utf8") as file:
-            global dictionary_google
-            dictionary_google = json.load(file, object_pairs_hook=collections.OrderedDict)
+    # dictionary_google = load_google_dict()
+    with DictionaryGoogleDB() as db:
+        global dictionary_google
+        dictionary_google = db.load_google_dict_db()
+        for name, trans in dictionary_google.setdefault('translations', {}).items():
+            if not name:
+                continue
 
-            if 'created' not in dictionary_google \
-                    or 'translations' not in dictionary_google \
-                    or 'translations_full' not in dictionary_google:
-                reset_google_dict()
-            else:
-                for name, trans in dictionary_google.get('translations').items():
-                    if not name:
-                        continue
+            if name in temp_dict.keys():
+                print(name, 'ALREADY IN INTERNAL DICT!')
+                continue
 
-                    if name in temp_dict.keys():
-                        print(name, 'ALREADY IN INTERNAL DICT!')
-                        continue
+            temp_dict[name] = trans
 
-                    temp_dict[name] = trans
+        # Sort temp dictionary by length and put it into the global dict
+        for key in sorted(temp_dict, key=lambda k: len(k), reverse=True):
+            dictionary[key] = temp_dict[key]
 
-            # print('GOOGLE DICTIONARY LOADED!')
-    except FileNotFoundError:
-        print('GOOGLE DICTIONARY NOT FOUND!')
-        reset_google_dict()
-        pass
-    except json.decoder.JSONDecodeError:
-        print("ERROR FOUND IN GOOOGLE DICTIONARY")
-        reset_google_dict()
-        pass
-
-    # Sort temp dictionary by lenght and put it into the global dict
-    for key in sorted(temp_dict, key=lambda k: len(k), reverse=True):
-        dictionary[key] = temp_dict[key]
-
-    # for key, value in dictionary.items():
-    #     print('"' + key + '" - "' + value + '"')
+        # for key, value in dictionary.items():
+        #     print('"' + key + '" - "' + value + '"')
 
     return dict_found
 
@@ -391,7 +376,7 @@ def update_dictionary(to_translate_list, translating_shapes=False, self=None):
                 continue
 
             translated = False
-            for key, value in dictionary_google.get('translations_full').items():
+            for key, value in dictionary_google.setdefault('translations_full').items():
                 if to_translate == key and value:
                     translated = True
 
@@ -491,7 +476,9 @@ def update_dictionary(to_translate_list, translating_shapes=False, self=None):
         dictionary[key] = temp_dict[key]
 
     # Save the google dict locally
-    save_google_dict()
+    # save_google_dict()
+    with DictionaryGoogleDB() as db:
+        db.save_google_dict_db()
 
     print('DICTIONARY UPDATE SUCCEEDED!')
     return
@@ -552,23 +539,45 @@ def fix_jp_chars(name):
     return name
 
 
-def reset_google_dict():
-    global dictionary_google
-    dictionary_google = OrderedDict()
+# def load_google_dict():
+#     try:
+#         with open(dictionary_google_file, encoding="utf8") as file:
+#             global dictionary_google
+#             dictionary_google = json.load(file, object_pairs_hook=collections.OrderedDict)
 
-    now_utc = datetime.now(timezone.utc).strftime(globs.time_format)
+#             if 'created' not in dictionary_google \
+#                     or 'translations' not in dictionary_google \
+#                     or 'translations_full' not in dictionary_google:
+#                 reset_google_dict()
+#             else:
+#                 print('GOOGLE DICTIONARY LOADED!')
+#     except FileNotFoundError:
+#         print('GOOGLE DICTIONARY NOT FOUND!')
+#         reset_google_dict()
+#         pass
+#     except json.decoder.JSONDecodeError:
+#         print("ERROR FOUND IN GOOOGLE DICTIONARY")
+#         reset_google_dict()
+#         pass
 
-    dictionary_google['created'] = now_utc
-    dictionary_google['translations'] = {}
-    dictionary_google['translations_full'] = {}
 
-    save_google_dict()
-    print('GOOGLE DICT RESET')
+# def reset_google_dict():
+#     global dictionary_google
+#     dictionary_google = OrderedDict()
+
+#     now_utc = datetime.now(timezone.utc).strftime(globs.time_format)
+
+#     dictionary_google['created'] = now_utc
+#     dictionary_google['translations'] = {}
+#     dictionary_google['translations_full'] = {}
+
+#     save_google_dict()
+#     print('GOOGLE DICT RESET')
 
 
-def save_google_dict():
-    with open(dictionary_google_file, 'w', encoding="utf8") as outfile:
-        json.dump(dictionary_google, outfile, ensure_ascii=False, indent=4)
+# def save_google_dict():
+#     with open(dictionary_google_file, 'w', encoding="utf8") as outfile:
+#         json.dump(dictionary_google, outfile, ensure_ascii=False, indent=4)
 
 # def cvs_to_json():
 #     temp_dict = OrderedDict()
@@ -596,3 +605,69 @@ def save_google_dict():
 #     dictionary_file_new = os.path.join(resources_dir, "dictionary2.json")
 #     with open(dictionary_file_new, 'w', encoding="utf8") as outfile:
 #         json.dump(temp_dict, outfile, ensure_ascii=False, indent=4)
+
+
+class DictionaryGoogleDB:
+    table_name = 'google_dict'
+    def __init__(self, uri=dictionary_google_db):
+        self.uri = uri
+
+    def __enter__(self):
+        self.conn = sqlite3.connect(self.uri)
+        self.cursor = self.conn.cursor()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.conn.close()
+
+    def execute(self, sql, *args, **kwargs):
+        return self.cursor.execute(sql, *args, **kwargs)
+
+    def commit(self):
+        self.conn.commit()
+
+    def reset_google_dict_db(self):
+        # self.execute(f"DROP TABLE IF EXISTS {self.table_name}")
+        sql = f"""\
+            CREATE TABLE IF NOT EXISTS {self.table_name}
+            (from_  TEXT    PRIMARY KEY     NOT NULL,
+            to_     TEXT    NOT NULL)
+        """
+        self.execute(sql)
+        self.commit()
+        print("GOOGLE DICT RESET")
+
+    def load_google_dict_db(self):
+        global dictionary_google
+        sql = f"SELECT from_, to_ FROM {self.table_name}"
+        try:
+            res = self.execute(sql)
+            d = {row[0]: row[1] for row in res}
+            print('GOOGLE DICTIONARY LOADED!')
+        except:
+            self.reset_google_dict_db()
+            d = {}
+        now_utc = datetime.now(timezone.utc).strftime(globs.time_format)
+        dictionary_google = {
+            'created': now_utc,
+            'translation': d,
+            'translation_full': {},
+        }
+        return dictionary_google
+
+    def save_google_dict_db(self):
+        global dictionary_google
+        values = [f'({k}, {v})' for k, v in dictionary_google['translations'].items()]
+        for i in range(0, len(values), 1000):
+            part = values[i:i+1000]
+            if part:
+                val_str= ',\n'.join(part)
+                sql = f"""\
+                    INSERT INTO {self.table_name} (from_, to_)
+                    VALUES {val_str}
+                    ON CONFLICT (from_) DO UPDATE SET
+                        from_=excluded.from_,
+                        to_=excluded.to_
+                """
+                self.execute(sql)
+                self.commit()
