@@ -2044,19 +2044,19 @@ def fix_twist_bones(mesh, bones_to_delete):
             mix_weights(mesh, vg_twist.name, vg_twist.name, mix_strength=0.2, mix_mode='SUB', delete_old_vg=False)
 
             if vg_twist1:
+                bones_to_delete.append(vg_twist1.name)
                 mix_weights(mesh, vg_twist1.name, vg_twist.name, mix_strength=0.25, delete_old_vg=False)
                 mix_weights(mesh, vg_twist1.name, vg_parent.name, mix_strength=0.75)
-                bones_to_delete.append(vg_twist1.name)
 
             if vg_twist2:
+                bones_to_delete.append(vg_twist2.name)
                 mix_weights(mesh, vg_twist2.name, vg_twist.name, mix_strength=0.5, delete_old_vg=False)
                 mix_weights(mesh, vg_twist2.name, vg_parent.name, mix_strength=0.5)
-                bones_to_delete.append(vg_twist2.name)
 
             if vg_twist3:
+                bones_to_delete.append(vg_twist3.name)
                 mix_weights(mesh, vg_twist3.name, vg_twist.name, mix_strength=0.75, delete_old_vg=False)
                 mix_weights(mesh, vg_twist3.name, vg_parent.name, mix_strength=0.25)
-                bones_to_delete.append(vg_twist3.name)
 
 
 def fix_twist_bone_names(armature):
