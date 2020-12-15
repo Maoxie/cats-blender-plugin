@@ -944,7 +944,7 @@ class FixArmature(bpy.types.Operator):
         Common.fix_zero_length_bones(armature, x_cord, y_cord, z_cord)
 
         # Merged bones that should be deleted
-        bones_to_delete = []
+        bones_to_delete = set()
 
         # Mixing the weights
         for mesh in meshes:
@@ -1010,8 +1010,7 @@ class FixArmature(bpy.types.Operator):
 
                     if bone_child.name not in mesh.vertex_groups:
                         # Add bone to delete list
-                        if bone_child.name not in bones_to_delete:
-                            bones_to_delete.append(bone_child.name)
+                        bones_to_delete.add(bone_child.name)
                         continue
 
                     if bone_parent.name not in mesh.vertex_groups:
@@ -1023,12 +1022,12 @@ class FixArmature(bpy.types.Operator):
                             if not temp_list_reparent_bones.get(child.name):
                                 temp_list_reparent_bones[child.name] = bone_parent.name
 
+                    bone_child_name = bone_child.name
                     # Mix the weights
                     Common.mix_weights(mesh, bone_child.name, bone_parent.name)
 
                     # Add bone to delete list
-                    if bone_child.name not in bones_to_delete:
-                        bones_to_delete.append(bone_child.name)
+                    bones_to_delete.add(bone_child_name)
 
             # Merge weights
             for bone_new, bones_old in temp_reweight_bones.items():
@@ -1058,8 +1057,7 @@ class FixArmature(bpy.types.Operator):
                         # Cancel if vertex group was not found
                         if not vg:
                             # Add bone to delete list
-                            if bone[1] not in bones_to_delete:
-                                bones_to_delete.append(bone[1])
+                            bones_to_delete.add(bone[1])
                             continue
 
                         if bone[0] == vg.name:
@@ -1090,12 +1088,12 @@ class FixArmature(bpy.types.Operator):
                                 if not temp_list_reparent_bones.get(child.name):
                                     temp_list_reparent_bones[child.name] = bone[0]
 
+                        vg_name = vg.name
                         # print(vg.name + " to " + bone[0])
                         Common.mix_weights(mesh, vg.name, bone[0])
 
                         # Add bone to delete list
-                        if vg.name not in bones_to_delete:
-                            bones_to_delete.append(vg.name)
+                        bones_to_delete.add(vg_name)
 
             # Old mixing weights. Still important
             for key, value in temp_list_reweight_bones.items():
@@ -1118,8 +1116,7 @@ class FixArmature(bpy.types.Operator):
                 # Cancel if vertex groups was not found
                 if not vg_from:
                     # Add bone to delete list
-                    if key not in bones_to_delete:
-                        bones_to_delete.append(key)
+                    bones_to_delete.add(key)
                     continue
 
                 # Cancel if vertex groups was not found
@@ -1142,13 +1139,13 @@ class FixArmature(bpy.types.Operator):
                     print('BUG: ' + vg_to.name + ' tried to mix weights with itself!')
                     continue
 
+                vg_from_name = vg_from.name
                 # Mix the weights
                 # print(vg_from.name, 'into', vg_to.name)
                 Common.mix_weights(mesh, vg_from.name, vg_to.name)
 
                 # Add bone to delete list
-                if vg_from.name not in bones_to_delete:
-                    bones_to_delete.append(vg_from.name)
+                bones_to_delete.add(vg_from_name)
 
             # Put back armature modifier
             mod = mesh.modifiers.new("Armature", 'ARMATURE')
@@ -1160,8 +1157,7 @@ class FixArmature(bpy.types.Operator):
                     Common.mix_weights(mesh, 'Upper Chest', 'Chest')
 
                     # Add bone to delete list
-                    if 'Upper Chest' not in bones_to_delete:
-                        bones_to_delete.append('Upper Chest')
+                    bones_to_delete.add('Upper Chest')
 
         Common.unselect_all()
         Common.set_active(armature)
