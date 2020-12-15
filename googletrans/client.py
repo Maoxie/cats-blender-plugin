@@ -6,8 +6,11 @@ You can translate text using this module.
 """
 import time
 
+import os
 import requests
 import random
+import site
+import sys
 import bpy
 
 from . import urls, utils
@@ -15,13 +18,21 @@ from .compat import PY3
 from .gtoken import TokenAcquirer
 from .constants import DEFAULT_USER_AGENT, LANGCODES, LANGUAGES, SPECIAL_CASES
 from .models import Translated, Detected
+try:
+
+    # to use third party libs
+    sys.path.append(site.USER_SITE)
+    from google.cloud import translate_v2 as translate
+    use_cloud_api = bool(os.environ.get('GOOGLE_APPLICATION_CREDENTIALS'))
+except ImportError:
+    use_cloud_api = False
 
 
 EXCLUDES = ('en', 'ca', 'fr')
-MAX_RETRY = 5
 
 
-class Translator(object):
+# class Translator(object):
+class AjaxTranslator(object):
     """Google Translate ajax API implementation class
 
     You have to create an instance of Translator to use this API
@@ -64,15 +75,10 @@ class Translator(object):
         params = utils.build_params(query=text, src=src, dest=dest,
                                     token=token)
         url = urls.TRANSLATE.format(host=self._pick_service_url())
-        retries = MAX_RETRY
-        while retries:
-            r = self.session.get(url, params=params)
-            if r.status_code == 200:
-                break
-            time.sleep(3)
-            retries -= 1
+        r = self.session.get(url, params=params)
 
-        # print('JSON:', r.text)
+        print('CODE:', r.status_code)
+        print('JSON:', r.text)
 
         data = utils.format_json(r.text)
         return data
@@ -239,3 +245,35 @@ class Translator(object):
         result = Detected(lang=src, confidence=confidence)
 
         return result
+
+
+class CloudTranslator(object):
+    def __init__(self):
+        self.translate_client = translate.Client()
+
+    def translate(self, text, dest='en', src='auto'):
+        result = self.translate_client.translate(text, target_language=dest)
+        if isinstance(result, list):
+            output = []
+            for origin, r in zip(text, result):
+                src = r["detectedSourceLanguage"]
+                translated = r["translatedText"]
+                output.append(
+                    Translated(src=src, dest=dest, origin=origin,
+                               text=translated, pronunciation=None)
+                )
+                return output
+        else:
+            origin = text
+            src = result["detectedSourceLanguage"]
+            translated = result["translatedText"]
+            return Translated(src=src, dest=dest, origin=origin,
+                            text=translated, pronunciation=None)
+
+
+if use_cloud_api:
+    Translator = CloudTranslator
+    print("USING GOOGLE CLOUD TRANSLATOR API")
+else:
+    Translator = AjaxTranslator
+    print("USING GOOGLE TRANLATE AJAX API")

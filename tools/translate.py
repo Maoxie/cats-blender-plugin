@@ -29,11 +29,12 @@ import bpy
 import copy
 import json
 import pathlib
+import time
 import collections
 import requests.exceptions
 import sqlite3
 
-from datetime import datetime, timezone
+from datetime import MAXYEAR, datetime, timezone
 from collections import OrderedDict
 
 from . import common as Common
@@ -50,6 +51,9 @@ resources_dir = os.path.join(str(main_dir), "resources")
 dictionary_file = os.path.join(resources_dir, "dictionary.json")
 # dictionary_google_file = os.path.join(resources_dir, "dictionary_google.json")
 dictionary_google_db = os.path.join(resources_dir, "dictionary_google.db")
+
+MAX_RETRY = 2
+
 
 @register_wrap
 class TranslateShapekeyButton(bpy.types.Operator):
@@ -412,8 +416,17 @@ def update_dictionary(to_translate_list, translating_shapes=False, self=None):
     # Translate the rest with google translate
     print('GOOGLE DICT UPDATE!')
     translator = Translator()
+    retries = MAX_RETRY
     try:
-        translations = translator.translate(google_input)
+        while True:
+            try:
+                translations = translator.translate(google_input)
+            except Exception as e:
+                retries -= 1
+                if retries < 0:
+                    raise e
+                else:
+                    time.sleep(3)
     except requests.exceptions.ConnectionError:
         print('CONNECTION TO GOOGLE FAILED!')
         if self:
